@@ -18,74 +18,53 @@ app.get("/", (req, res) => {
 });
 
 app.post("/", jsonParser, async (req, res) => {
-  const debugDump = req.body.debugDump;
-  const {username, password} = req.body.user;
+  const {username, password, vesselName, vesselId} = req.body.user;
   // get auth token
-  const authRes = await axios.post(`${endpoint}/auth/login`, 
-  { username: username.trim(), password: password.trim() })
-    .catch(error => {
+  const authRes = await axios.post(`${endpoint}/auth/login`, { 
+    username: username.trim(), password: password.trim() 
+  }).catch(error => {
     console.log(error)
   })
 
   const authToken = authRes.data.accessToken;
 
-  // parse submission to how endpoint wants them
-  const submissionsGlobals = debugDump.collections
-    .find(col => col.name === 'submissionglobals').docs
-
-  const formattedSubmissions = debugDump.collections
-    .find(collection => collection.name === 'submissions')
-    .docs.filter(sub => dayjs(sub.reportDate).isAfter(dayjs('1/10/2020')))
-    .map(sub => {
-
-    const { id, reportDate, status, title, vesselId, content, formId, formVersion} = sub
-    const subGlobals = submissionsGlobals.filter(global => {
-      return global.submissionId === id
-    }).map((global) => {
-      delete global.created
-      delete global.updated
-      return global
-    })
-    return {
-      id,
-      reportDate,
-      status,
-      title, 
-      vessel: {
-        id: vesselId
-      },
-      content,
-      authorName: 'Bridge',
-      form: {
-        id: formId,
-        version: formVersion,
-      },
-      globalValues: subGlobals,
+  // get the correct ids
+  const submissions = await axios.get(`${endpoint}/submissions?vesselName=${vesselName}&limit=100`, {
+    headers: {
+      'Authorization': `Bearer ${authToken}` 
     }
   })
 
-  let failedSubmissions = []
+  console.log(submissions.data)
 
-  // send submissisons 
-  const promises = formattedSubmissions.map(async (sub) => {
-    const promise = await axios.post(`${endpoint}/submissions`, sub, {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${authToken}`,
-      },
-    }).catch(() => {
-      failedSubmissions.push(sub)
-    })
-    return promise
+  // get the form types
+  const forms = await axios.get(`${endpoint}/forms?vesselId=${vesselId}&limit=100`, {
+    headers: {
+      'Authorization': `Bearer ${authToken}` 
+    }
   })
 
-  await Promise.all(promises).then(() => {
-    res.send({
-      passed: formattedSubmissions.length - failedSubmissions.length,
-      outOf: formattedSubmissions.length,
-      failedSubmissions,
-    })
-  })
+  const extractedFieldIds = forms.data.reduce((forms, form) => {
+    const formFields = form.fields.map((field) => field.id)
+    forms[form.title.replace(/ /g,'')] = formFields
+    return forms
+  }, {})
+
+  res.send(extractedFieldIds)
+
+  // const correctIds = {
+  //   positionReport
+  // }
+
+  
+
+
+
+  // Get submissions that are incorect
+
+  // loop through incorrect submissions and update their content with the correct ids 
+
+
 })
 
 /**
